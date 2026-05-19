@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Registrierung erfolgreich</title>
+<style>
+
+    body {
+
+      font-family: Arial, sans-serif;
+
+      background: #f5f5f5;
+
+      margin: 0;
+
+      padding: 0;
+
+    }
+
+    .box {
+
+      width: 420px;
+
+      margin: 80px auto;
+
+      background: white;
+
+      border: 1px solid #ddd;
+
+      border-radius: 10px;
+
+      padding: 30px;
+
+      box-sizing: border-box;
+
+      text-align: center;
+
+    }
+
+    h1 {
+
+      margin-top: 0;
+
+      font-size: 24px;
+
+    }
+
+    p {
+
+      font-size: 16px;
+
+      line-height: 1.5;
+
+      color: #333;
+
+    }
+
+    .username-box {
+
+      margin: 20px 0;
+
+      padding: 12px;
+
+      background: #f1f1f1;
+
+      border-radius: 8px;
+
+      font-weight: bold;
+
+      font-size: 18px;
+
+    }
+
+    .warning {
+
+      margin-top: 20px;
+
+      color: #b00020;
+
+      font-weight: bold;
+
+    }
+
+    .button {
+
+      display: inline-block;
+
+      margin-top: 24px;
+
+      padding: 12px 20px;
+
+      background: #007bff;
+
+      color: white;
+
+      text-decoration: none;
+
+      border-radius: 8px;
+
+      font-size: 16px;
+
+    }
+
+    .button:hover {
+
+      background: #0056b3;
+
+    }
+</style>
+</head>
+<body>
+<div class="box">
+<h1>Registrierung erfolgreich</h1>
+<p>Deine Registrierung war erfolgreich.</p>
+<p>Bitte notiere dir deinen Nutzernamen und dein Passwort.</p>
+<div class="username-box">
+
+      Nutzername: {{ username }}
+</div>
+<p>Du benötigst diese Angaben für die spätere Anmeldung.</p>
+<p class="warning">
+
+      Es gibt keine Möglichkeit, den Account nach Vergessen des Passworts wiederherzustellen.
+</p>
+</div>
+</body>
+</html>
+ 

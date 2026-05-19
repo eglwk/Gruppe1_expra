@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Willkommen, {{ username }}</h1>
+  <p>Ihre SERIAL ist intern zugeordnet: {{ serial }}</p>
+  <p>Hier kommt Ihr Chatbot-Interface hin.</p>
+
+  <p><a href="{{ url_for('logout') }}">Logout</a></p>
+{% endblock %}
