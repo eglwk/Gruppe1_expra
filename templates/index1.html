@@ -64,29 +64,13 @@
     }
 
     .chat-timer {
-      display: none;
+      display: block;
       font-size: 12px;
       margin-top: 4px;
       font-weight: bold;
       opacity: 0.95;
     }
 
-    .logout-button {
-      position: absolute;
-      top: 14px;
-      right: 12px;
-      background-color: transparent;
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.5);
-      border-radius: 6px;
-      padding: 6px 10px;
-      font-size: 12px;
-      cursor: pointer;
-    }
-
-    .logout-button:hover {
-      background-color: rgba(255,255,255,0.12);
-    }
 
     .chat-messages {
       flex: 1;
@@ -200,7 +184,9 @@
       const inputField = document.querySelector(".input-field");
       const sendButton = document.querySelector(".send-button");
       const timerElement = document.querySelector("#chat-timer");
+      const subtitleElement = document.querySelector("#chat-subtitle");
 
+      let chatHistory = [];
       let chatDurationMs = 7.5 * 60 * 1000;
       let daySwitchPauseMs = 2 * 60 * 1000;
       let chatStartedAt = null;
@@ -212,7 +198,6 @@
       let chatExpired = false;
       let typingIndicator = null;
       let timerInterval = null;
-      let endMessageShown = false;
 
       function scrollToBottom() {
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -234,6 +219,10 @@
       function setInputDisabled(disabled) {
         inputField.disabled = disabled;
         sendButton.disabled = disabled;
+      }
+
+      function updateHeader() {
+        subtitleElement.textContent = `Tag ${currentStudyDay} von ${maxStudyDay}`;
       }
 
       function addUserMessage(text) {
@@ -267,7 +256,6 @@
 
         typingIndicator = document.createElement("div");
         typingIndicator.classList.add("bot-message-container");
-
         typingIndicator.innerHTML = `
           <div class="bot-name">Lumi:</div>
           <div class="bot-message typing-message">schreibt ...</div>
@@ -293,12 +281,14 @@
 
       function setTimerState(data) {
         if (!data) return;
+        if (Array.isArray(data.chat_history)) chatHistory = data.chat_history;
         if (data.study_day) currentStudyDay = Number(data.study_day);
         if (data.max_study_day) maxStudyDay = Number(data.max_study_day);
         chatDurationMs = data.duration_seconds ? Number(data.duration_seconds) * 1000 : 7.5 * 60 * 1000;
         daySwitchPauseMs = data.pause_seconds ? Number(data.pause_seconds) * 1000 : 2 * 60 * 1000;
-        if (data.chat_started_at) chatStartedAt = new Date(data.chat_started_at).getTime();
-        if (data.conversation_closed_at) chatClosedAt = new Date(data.conversation_closed_at).getTime();
+        chatStartedAt = data.chat_started_at ? new Date(data.chat_started_at).getTime() : null;
+        chatClosedAt = data.conversation_closed_at ? new Date(data.conversation_closed_at).getTime() : null;
+        updateHeader();
       }
 
       function getMsUntilNextDay() {
@@ -307,6 +297,29 @@
           return Math.max(0, daySwitchPauseMs - elapsedAfterClosing);
         }
         return daySwitchPauseMs;
+      }
+
+      function resetTimerForNextDay() {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+        chatStartedAt = null;
+        chatClosedAt = null;
+        chatExpired = false;
+        timerElement.textContent = `Gesprächszeit: ${formatRemainingTime(chatDurationMs)}`;
+      }
+
+      async function startNextDayAfterPause() {
+        if (currentStudyDay >= maxStudyDay) return;
+
+        const waitMs = getMsUntilNextDay();
+        window.setTimeout(async () => {
+          currentStudyDay += 1;
+          resetTimerForNextDay();
+          inputField.placeholder = "Schreibe hier deine Nachricht...";
+          await startChatFromPrompt();
+        }, Math.max(1000, waitMs));
       }
 
       function finishClosedChat() {
@@ -318,11 +331,11 @@
           timerInterval = null;
         }
 
-        inputField.placeholder = "Das Gespräch für diesen Tag ist beendet.";
-
         if (currentStudyDay < maxStudyDay) {
-          const waitMs = getMsUntilNextDay();
-          window.setTimeout(() => window.location.reload(), Math.max(1000, waitMs));
+          inputField.placeholder = "Kurze Pause. Das nächste Thema startet gleich automatisch.";
+          startNextDayAfterPause();
+        } else {
+          inputField.placeholder = "Die Studie ist abgeschlossen.";
         }
       }
 
@@ -359,13 +372,16 @@
 
       async function startChatFromPrompt() {
         showTypingIndicator();
+        setInputDisabled(true);
 
         try {
           const response = await fetch("/start_chat", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            }
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              study_day: currentStudyDay,
+              chat_history: chatHistory
+            })
           });
 
           const data = await response.json();
@@ -377,11 +393,16 @@
             return;
           }
 
-          if (data.reply) {
-            addBotMessage(data.reply);
-          }
+          if (data.reply) addBotMessage(data.reply);
 
-          startTimerIfNeeded();
+          chatExpired = Boolean(data.expired);
+          if (chatExpired) {
+            finishClosedChat();
+          } else {
+            setInputDisabled(false);
+            inputField.focus();
+            startTimerIfNeeded();
+          }
         } catch (error) {
           removeTypingIndicator();
           console.error(error);
@@ -394,7 +415,6 @@
           const response = await fetch("/load_chat");
           const data = await response.json();
           setTimerState(data);
-
           messagesContainer.innerHTML = "";
 
           if (!response.ok) {
@@ -402,27 +422,9 @@
             return;
           }
 
-          if (data.expired) {
-            chatExpired = true;
-          }
-
-          if (data.chat_history && data.chat_history.length > 0) {
-            data.chat_history.forEach(msg => {
-              if (msg.role === "user") {
-                addUserMessage(msg.content);
-              } else if (msg.role === "assistant") {
-                addBotMessage(msg.content);
-              }
-            });
-            if (data.expired) {
-              finishClosedChat();
-            } else {
-              startTimerIfNeeded();
-            }
-          } else {
-            await startChatFromPrompt();
-          }
-
+          // Es wird bewusst nichts vom Server geladen oder gespeichert.
+          // Der Chat startet beim Öffnen neu und läuft dann komplett in diesem Browser-Tab.
+          await startChatFromPrompt();
         } catch (error) {
           console.error(error);
           addBotMessage("Chat konnte nicht geladen werden.");
@@ -431,7 +433,6 @@
 
       async function sendMessage() {
         const userMessage = inputField.value.trim();
-
         if (userMessage === "" || isSending || chatExpired) return;
 
         isSending = true;
@@ -440,17 +441,16 @@
         addUserMessage(userMessage);
         inputField.value = "";
         inputField.style.height = "auto";
-
         showTypingIndicator();
 
         try {
           const response = await fetch("/send", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              message: userMessage
+              message: userMessage,
+              study_day: currentStudyDay,
+              chat_history: chatHistory
             })
           });
 
@@ -459,26 +459,16 @@
           setTimerState(data);
 
           if (!response.ok) {
-            if (data.expired) {
-              if (data.reply) {
-                addBotMessage(data.reply);
-              } else {
-                addBotMessage(data.error || "Das Gespräch für diesen Tag ist beendet.");
-              }
-              finishClosedChat();
-              return;
-            }
             addBotMessage(data.error || "Serverfehler.");
-          } else {
-            if (data.reply) {
-              addBotMessage(data.reply);
-            }
-            if (data.expired) {
-              finishClosedChat();
-              return;
-            }
+            if (data.expired) finishClosedChat();
+            return;
           }
 
+          if (data.reply) addBotMessage(data.reply);
+          if (data.expired) {
+            finishClosedChat();
+            return;
+          }
         } catch (error) {
           removeTypingIndicator();
           addBotMessage("Verbindung fehlgeschlagen.");
@@ -506,6 +496,7 @@
         inputField.style.height = inputField.scrollHeight + "px";
       });
 
+      updateHeader();
       loadChat();
     });
   </script>
@@ -518,15 +509,10 @@
 
       <div class="header-text">
         <div class="header-title">MindfulBot Lumi</div>
-        <div class="header-subtitle">
-          Eingeloggt als: {{ username }} · Tag {{ study_day|default('1') }}
-        </div>
+        <div class="header-subtitle" id="chat-subtitle">Tag {{ study_day|default('1') }} von 4</div>
         <div class="chat-timer" id="chat-timer">Gesprächszeit: 07:30</div>
       </div>
 
-      <button class="logout-button" type="button" onclick="window.location.href='/logout'">
-        Logout
-      </button>
     </div>
 
     <div class="chat-messages"></div>
